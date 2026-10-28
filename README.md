@@ -39,9 +39,10 @@ The functions check their own secret header, so JWT verification is off.
 
 Meta's API returns comment counts but not comment text for other accounts' posts. Comment text is collected by hand with the extension in `extension/comment-capture`, run by whoever operates this collector:
 
-1. Click the extension icon to open the dashboard. It lists each Instagram channel, whether its capture is due, and the posts whose comment count has gone up since the last capture.
-2. Click **Open** on a post, let the comments load (scroll, expand replies if you need them), then click **Save comments** at the bottom right of the page.
-3. The comments are stored in `post_comments` against the collected post, and the post shows as done until the collector sees more comments.
+1. Click the extension icon to open the dashboard. Each Instagram channel has a tab showing whether its capture is due and the posts whose comment count has gone up since the last capture.
+2. Click **Open** (or **Open next post**). Posts open in post view (`/p/<code>/`) in one reused tab, with the comments beside the post.
+3. Let the comments load (scroll, expand replies if you need them). The button at the bottom right counts the comments read so far, including ones Instagram has scrolled away, then click **Save N comments**. If a reel opens with a pop-up comment panel instead, saving still works, and the button offers to reopen the reel in post view if it finds no comments.
+4. The comments are stored in `post_comments` against the collected post, and the post shows as done until the collector sees more comments.
 
 The extension never scrolls, clicks or visits pages by itself. Use a separate Instagram account in that browser, not the one connected to the Meta app.
 
