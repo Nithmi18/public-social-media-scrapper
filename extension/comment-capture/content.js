@@ -36,8 +36,10 @@
     const res = await chrome.runtime.sendMessage({ type: 'capture', shortcode, comments });
     button.disabled = false;
     if (res.ok) {
-      say(`Saved ${res.data.comments_saved} comments.` +
-        (res.data.comments_count_at_capture != null ? ` Collector count: ${res.data.comments_count_at_capture}.` : '') +
+      const d = res.data;
+      say(`Saved ${d.comments_saved} comments` +
+        (d.comments_stored != null ? ` (${d.comments_stored} stored for this post).` : '.') +
+        (d.comments_count_at_capture != null ? ` Instagram's count at the last collection run was ${d.comments_count_at_capture}.` : '') +
         ' Load more or expand replies and save again to add them.');
     } else {
       const why = {
