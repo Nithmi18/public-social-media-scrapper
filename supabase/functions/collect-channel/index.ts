@@ -71,6 +71,9 @@ export function normalizeYT(p) {
     published_at:p.snippet.publishedAt,likes:count(p.statistics?.likeCount),
     comments:count(p.statistics?.commentCount),views:count(p.statistics?.viewCount)};
 }
+// News outlets post ~60 times a day on Instagram, so the refresh window is set in
+// days and the page cap only guards against runaway paging (50 posts a page).
+const IG_REFRESH_DAYS=7, IG_MAX_PAGES=12;
 export async function instagram(channel,fetcher=fetch) {
   if(!/^[A-Za-z0-9_.]+$/.test(channel.handle)) throw new SafeError('invalid_instagram_handle');
   const version=required('META_GRAPH_VERSION');
@@ -78,8 +81,8 @@ export async function instagram(channel,fetcher=fetch) {
   const caller=required('META_CALLER_IG_ID');
   if(!/^\d+$/.test(caller)) throw new SafeError('invalid_meta_caller_id');
   const posts=new Map(); let after=null, info, truncated=false;
-  const cutoff=Date.now()-14*86400000;
-  for(let page=0;page<4;page++) {
+  const cutoff=Date.now()-IG_REFRESH_DAYS*86400000;
+  for(let page=0;page<IG_MAX_PAGES;page++) {
     const paging=after?`.after(${after})`:'';
     const fields=`business_discovery.username(${channel.handle}){id,username,name,biography,followers_count,media_count,media.limit(50)${paging}{id,caption,media_type,permalink,timestamp,like_count,comments_count,view_count}}`;
     const url=new URL(`https://graph.facebook.com/${version}/${caller}`);url.searchParams.set('fields',fields);
@@ -95,7 +98,7 @@ export async function instagram(channel,fetcher=fetch) {
     if(rows.length && rows.every(p=>Date.parse(p.timestamp)<cutoff)) break;
     if(!/^[A-Za-z0-9_=-]+$/.test(next)) throw new SafeError('invalid_instagram_cursor');
     after=next;
-    if(page===3) truncated=true;
+    if(page===IG_MAX_PAGES-1) truncated=true;
   }
   return {posts:[...posts.values()],external_id:String(info.id),
     metadata:{username:info.username,name:info.name,biography:info.biography},
