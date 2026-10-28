@@ -1,0 +1,29 @@
+:root { --bg:#fff; --fg:#1d1d1f; --muted:#6e6e73; --line:#e5e5ea; --accent:#0a66c2; --good:#1a7f37; --warn:#b35900; color-scheme: light dark; }
+@media (prefers-color-scheme: dark) { :root { --bg:#161618; --fg:#f2f2f7; --muted:#a1a1a6; --line:#2c2c2e; --accent:#4c9aff; --good:#3fb950; --warn:#f0883e; } }
+* { box-sizing: border-box; }
+body { margin:0; padding:16px 24px 48px; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, sans-serif; }
+header { display:flex; flex-wrap:wrap; gap:12px 24px; align-items:center; justify-content:space-between; }
+h1 { font-size:20px; margin:0; }
+.controls { display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:var(--muted); }
+button { padding:6px 12px; border:1px solid var(--line); border-radius:6px; background:transparent; color:var(--fg); cursor:pointer; }
+button.primary, #refresh { background:var(--accent); border-color:var(--accent); color:#fff; }
+details { margin:16px 0; }
+form { display:flex; flex-wrap:wrap; gap:12px; align-items:end; margin-top:8px; }
+form label { display:flex; flex-direction:column; gap:4px; color:var(--muted); }
+input[type=url], input[type=password] { width:320px; max-width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:transparent; color:var(--fg); }
+#status { color:var(--muted); min-height:1.4em; }
+.channel { border:1px solid var(--line); border-radius:10px; padding:12px 16px; margin:16px 0; }
+.channel-head { display:flex; gap:12px; align-items:center; justify-content:space-between; }
+h2 { font-size:16px; margin:0; }
+.badge { font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
+.badge.due { color:var(--warn); border-color:var(--warn); }
+.summary { color:var(--muted); margin:4px 0 8px; }
+table { width:100%; border-collapse:collapse; }
+th, td { text-align:left; padding:6px 8px; border-top:1px solid var(--line); vertical-align:top; }
+th { color:var(--muted); font-weight:500; font-size:12px; }
+td.num { text-align:right; font-variant-numeric:tabular-nums; }
+.state { font-weight:700; }
+.state.done { color:var(--good); }
+.state.pending { color:var(--warn); }
+.caption { max-width:520px; }
+.meta { color:var(--muted); font-size:12px; }

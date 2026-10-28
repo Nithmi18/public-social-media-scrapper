@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "News Comment Capture",
+  "version": "0.1.0",
+  "description": "Shows which collected Instagram posts have new comments and saves the comments you open.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["https://www.instagram.com/*", "https://*.supabase.co/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Comment capture dashboard" },
+  "content_scripts": [
+    {
+      "matches": ["https://www.instagram.com/*"],
+      "js": ["parse.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
