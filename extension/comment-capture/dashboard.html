@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Comment capture</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <header>
+    <h1>Comment capture</h1>
+    <div class="controls">
+      <label>Posts from the last
+        <select id="days"><option>3</option><option selected>7</option><option>14</option></select> days</label>
+      <label><input type="checkbox" id="pendingOnly" checked> Only posts with new comments</label>
+      <button id="refresh">Refresh</button>
+    </div>
+  </header>
+
+  <details id="settings">
+    <summary>Settings</summary>
+    <form id="settingsForm">
+      <label>Supabase project URL <input id="baseUrl" type="url" placeholder="https://xxxx.supabase.co" required></label>
+      <label>Capture key <input id="captureKey" type="password" pattern="[a-f0-9]{64}" required></label>
+      <button type="submit">Save settings</button>
+    </form>
+  </details>
+
+  <p id="status" role="status"></p>
+  <main id="channels"></main>
+
+  <template id="channelTpl">
+    <section class="channel">
+      <div class="channel-head">
+        <h2></h2>
+        <span class="badge"></span>
+      </div>
+      <p class="summary"></p>
+      <table>
+        <thead><tr><th></th><th>Post</th><th>Comments</th><th>New</th><th>Last captured</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </template>
+  <script src="dashboard.js"></script>
+</body>
+</html>
