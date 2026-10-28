@@ -74,6 +74,8 @@ export function normalizeYT(p) {
 // News outlets post ~60 times a day on Instagram, so the refresh window is set in
 // days and the page cap only guards against runaway paging (50 posts a page).
 const IG_REFRESH_DAYS=7, IG_MAX_PAGES=12;
+// Daily Mirror uploads ~15 videos a day, so 14 days needs more than 4 pages of 50.
+const YT_MAX_PAGES=8, YT_MAX_RECENT=400;
 export async function instagram(channel,fetcher=fetch) {
   if(!/^[A-Za-z0-9_.]+$/.test(channel.handle)) throw new SafeError('invalid_instagram_handle');
   const version=required('META_GRAPH_VERSION');
@@ -118,13 +120,13 @@ export async function youtube(channel,recentIds=[],fetcher=fetch) {
   if(!c?.contentDetails?.relatedPlaylists?.uploads) throw new SafeError('youtube_channel_unavailable');
   const ids=new Set(recentIds); let pageToken='', truncated=false;
   const cutoff=Date.now()-14*86400000;
-  for(let page=0;page<4;page++) {
+  for(let page=0;page<YT_MAX_PAGES;page++) {
     const data=await get('playlistItems',{part:'contentDetails',playlistId:c.contentDetails.relatedPlaylists.uploads,maxResults:'50',...(pageToken?{pageToken}:{})});
     for(const p of data.items??[]) if(p.contentDetails?.videoId) ids.add(p.contentDetails.videoId);
     if(!data.nextPageToken) break;
     if(data.items?.length && data.items.every(p=>Date.parse(p.contentDetails?.videoPublishedAt)<cutoff)) break;
     pageToken=data.nextPageToken;
-    if(page===3) truncated=true;
+    if(page===YT_MAX_PAGES-1) truncated=true;
   }
   const posts=[], all=[...ids];
   for(let i=0;i<all.length;i+=50) {
@@ -156,9 +158,9 @@ export async function handler(req) {
     if(channel.platform==='instagram') payload=await instagram(channel);
     else if(channel.platform==='youtube') {
       const since=new Date(Date.now()-14*86400000).toISOString();
-      const recent=await db(`posts?channel_id=eq.${channel.id}&published_at=gte.${encodeURIComponent(since)}&select=external_id&order=published_at.desc&limit=201`);
-      payload=await youtube(channel,recent.slice(0,200).map(p=>p.external_id));
-      if(recent.length>200) payload.warnings.push('youtube_recent_refresh_cap_reached');
+      const recent=await db(`posts?channel_id=eq.${channel.id}&published_at=gte.${encodeURIComponent(since)}&select=external_id&order=published_at.desc&limit=${YT_MAX_RECENT+1}`);
+      payload=await youtube(channel,recent.slice(0,YT_MAX_RECENT).map(p=>p.external_id));
+      if(recent.length>YT_MAX_RECENT) payload.warnings.push('youtube_recent_refresh_cap_reached');
     } else throw new SafeError('unsupported_platform');
     const seen=await rpc('finish_collection',{p_run:run,p_payload:payload});
     return json({run_id:run,status:payload.warnings.length?'partial':'success',posts_seen:seen,warnings:payload.warnings});
