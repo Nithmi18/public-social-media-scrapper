@@ -6,7 +6,8 @@
 (function (root) {
   const COMMENT_LINK = /\/(?:p|reels?|tv)\/([A-Za-z0-9_-]+)\/c\/(\d+)(?:\/r\/(\d+))?/;
   const PROFILE_LINK = /^\/([A-Za-z0-9._]{1,30})\/?$/;
-  const NOISE = /^(reply|see translation|hide replies|view replies.*|liked by.*|\d[\d,.]*\s*[kKmM]?\s*likes?|\d+\s*[smhdwy]|edited|verified|•)$/i;
+  // Button and label text that sits inside a comment's block but is not the comment.
+  const NOISE = /^(reply|see translation|see original|hide (all )?replies|[-—–\s]*view (all )?(\d+ )?(more )?repl(y|ies).*|liked by.*|\d[\d,.]*\s*[kKmM]?\s*likes?|\d+\s*[smhdwy]|edited|verified|author|pinned|•)$/i;
 
   function shortcodeFromPath(path) {
     const m = /^\/(?:[A-Za-z0-9._]+\/)?(?:p|reels?|tv)\/([A-Za-z0-9_-]+)/.exec(path);
