@@ -11,7 +11,7 @@ It reads the public Instagram and YouTube pages of news outlets (currently Newsw
 | `supabase/functions/collect-youtube-comments` | Pages through comment threads and replies for one YouTube video, resumable across runs. |
 | `supabase/functions/comment-capture` | Backend for the comment capture extension: the dashboard queue and saving captured Instagram comments. |
 | `extension/comment-capture` | Chrome extension for reading Instagram comments by hand (see below). |
-| `supabase/functions/news-feed` | Read API for other tools: new posts in order, keyed by an `x-consumer-key` (hash stored in `integration_clients`). |
+| `supabase/functions/news-feed` | Read API for connected apps: posts with counts, comments and channels, keyed by an `x-consumer-key`. See [docs/news-feed-api.md](docs/news-feed-api.md). |
 | `supabase/migrations` | Database schema. `20261027000000_baseline_core_schema.sql` captures tables first made in the SQL editor. |
 | `supabase/snapshot/cron_jobs.sql` | The pg_cron jobs: collector at 00:30 and 12:30 UTC, comments at :45, retention daily. |
 
