@@ -1,6 +1,6 @@
 # News feed API
 
-Read API for apps connected to the public social collector. It serves what the collector gathers from news outlets' public pages: posts with their latest counts, comment text, and channels. Today that is Instagram and YouTube; Facebook, X and TikTok will appear as new `platform` values when they are added, without changes to the API.
+Read API for apps connected to the public social collector. Each app only sees the channels it has been granted. It serves what the collector gathers from those channels: posts with their latest counts, comment text, and channels. Today that is Instagram and YouTube; Facebook, X and TikTok will appear as new `platform` values when they are added, without changes to the API.
 
 Base URL: `https://qyeaiqpvqecyapovcwox.supabase.co/functions/v1/news-feed`
 
@@ -78,4 +78,18 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 insert into public.integration_clients(name,key_hash,purpose)
 values ('<app name>', encode(sha256(convert_to('<key>','UTF8')),'hex'), 'feed');
 ```
+A new key reads nothing until it is granted channels. Grant only the channels the app needs:
+```sql
+insert into public.integration_client_channels(client_id, channel_id)
+select i.id, c.id from public.integration_clients i, public.channels c
+where i.name = '<app name>' and c.handle in ('dailymirrorlk', '@Dailymirror0', 'newswirelk', '@NewsWireSL');
+```
+To see what an app can read:
+```sql
+select c.platform, c.handle from public.integration_client_channels g
+join public.integration_clients i on i.id = g.client_id join public.channels c on c.id = g.channel_id
+where i.name = '<app name>';
+```
+To remove a channel: `delete from public.integration_client_channels g using public.integration_clients i, public.channels c where g.client_id = i.id and g.channel_id = c.id and i.name = '<app name>' and c.handle = '<handle>';`
+
 Send the key to the app's technical contact once, privately. To revoke it: `update public.integration_clients set enabled = false where name = '<app name>';`
