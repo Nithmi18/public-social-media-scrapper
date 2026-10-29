@@ -58,18 +58,36 @@ export async function db(path,{method='GET',body}={}) {
   return text?JSON.parse(text):null;
 }
 export const rpc = (name,args) => db(`rpc/${name}`,{method:'POST',body:args});
+// Thumbnail links are passed on to connected apps, so only https links on the platform's
+// own image hosts are kept.
+export function imageUrl(value,hosts) {
+  if(typeof value!=='string' || value.length>2048) return null;
+  try {
+    const u=new URL(value);
+    return u.protocol==='https:' && hosts.some(h=>u.hostname===h || u.hostname.endsWith(`.${h}`))?u.href:null;
+  } catch { return null; }
+}
+const IG_IMAGE_HOSTS=['cdninstagram.com','fbcdn.net'], YT_IMAGE_HOSTS=['ytimg.com'];
 export function normalizeIG(p) {
   if(!p.id || !p.timestamp || !p.permalink) throw new SafeError('instagram_missing_required_fields');
   return {external_id:String(p.id),url:p.permalink,title:null,caption:p.caption??null,
     media_type:(p.media_product_type==='REELS' || (p.media_type==='VIDEO' && /^https:\/\/(?:www\.)?instagram\.com\/reels?\//i.test(p.permalink)))?'REEL':p.media_type??null,published_at:p.timestamp,
-    likes:count(p.like_count),comments:count(p.comments_count),views:count(p.view_count)};
+    likes:count(p.like_count),comments:count(p.comments_count),views:count(p.view_count),
+    // Videos and reels have a cover image; photos and carousels are their own image.
+    thumbnail_url:imageUrl(p.media_type==='VIDEO'?p.thumbnail_url:p.media_url??p.thumbnail_url,IG_IMAGE_HOSTS)};
+}
+// Largest thumbnail YouTube has for the video (maxres is missing on older uploads).
+function pickThumbnail(t={}) {
+  for(const size of ['maxres','standard','high','medium','default']) if(t[size]?.url) return t[size].url;
+  return null;
 }
 export function normalizeYT(p) {
   if(!p.id || !p.snippet?.publishedAt) throw new SafeError('youtube_missing_required_fields');
   return {external_id:p.id,url:`https://www.youtube.com/watch?v=${encodeURIComponent(p.id)}`,
     title:p.snippet.title??null,caption:p.snippet.description??null,media_type:'VIDEO',
     published_at:p.snippet.publishedAt,likes:count(p.statistics?.likeCount),
-    comments:count(p.statistics?.commentCount),views:count(p.statistics?.viewCount)};
+    comments:count(p.statistics?.commentCount),views:count(p.statistics?.viewCount),
+    thumbnail_url:imageUrl(pickThumbnail(p.snippet.thumbnails),YT_IMAGE_HOSTS)};
 }
 // News outlets post ~60 times a day on Instagram, so the refresh window is set in
 // days and the page cap only guards against runaway paging (50 posts a page).
@@ -82,13 +100,20 @@ export async function instagram(channel,fetcher=fetch) {
   if(!/^v\d+\.\d+$/.test(version)) throw new SafeError('invalid_meta_graph_version');
   const caller=required('META_CALLER_IG_ID');
   if(!/^\d+$/.test(caller)) throw new SafeError('invalid_meta_caller_id');
-  const posts=new Map(); let after=null, info, truncated=false;
+  const posts=new Map(); let after=null, info, truncated=false, imageFields=',media_url,thumbnail_url';
+  const warnings=[];
   const cutoff=Date.now()-IG_REFRESH_DAYS*86400000;
   for(let page=0;page<IG_MAX_PAGES;page++) {
     const paging=after?`.after(${after})`:'';
-    const fields=`business_discovery.username(${channel.handle}){id,username,name,biography,followers_count,media_count,media.limit(50)${paging}{id,caption,media_type,permalink,timestamp,like_count,comments_count,view_count}}`;
+    const fields=`business_discovery.username(${channel.handle}){id,username,name,biography,followers_count,media_count,media.limit(50)${paging}{id,caption,media_type,permalink,timestamp,like_count,comments_count,view_count${imageFields}}}`;
     const url=new URL(`https://graph.facebook.com/${version}/${caller}`);url.searchParams.set('fields',fields);
-    const result=await requestJson(url,{headers:{Authorization:`Bearer ${required('META_ACCESS_TOKEN')}`}},fetcher);
+    let result;
+    try { result=await requestJson(url,{headers:{Authorization:`Bearer ${required('META_ACCESS_TOKEN')}`}},fetcher); }
+    catch(error) {
+      // If Instagram refuses the image fields, collect the counts without thumbnails.
+      if(page!==0 || !imageFields || error.message!=='upstream_http_400') throw error;
+      imageFields=''; warnings.push('instagram_thumbnails_unavailable'); page--; continue;
+    }
     info=result.business_discovery;
     if(!info?.id) throw new SafeError('instagram_discovery_unavailable');
     const rows=info.media?.data??[];
@@ -105,7 +130,7 @@ export async function instagram(channel,fetcher=fetch) {
   return {posts:[...posts.values()],external_id:String(info.id),
     metadata:{username:info.username,name:info.name,biography:info.biography},
     followers:count(info.followers_count),post_count:count(info.media_count),views:null,
-    warnings:truncated?['instagram_page_cap_reached_recent_coverage_incomplete']:[]};
+    warnings:truncated?[...warnings,'instagram_page_cap_reached_recent_coverage_incomplete']:warnings};
 }
 export async function youtube(channel,recentIds=[],fetcher=fetch) {
   const key=required('YOUTUBE_API_KEY');
