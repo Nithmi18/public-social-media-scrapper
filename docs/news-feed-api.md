@@ -25,7 +25,9 @@ Posts from every tracked channel, with the latest counts.
 | `platform` | `instagram` or `youtube`. |
 | `outlet` | Outlet name, e.g. `Daily Mirror`. |
 
-Each post: `id`, `outlet`, `platform`, `handle`, `external_id`, `url`, `title`, `caption`, `media_type`, `published_at`, `first_seen_at`, `updated_at`, `metrics` (`likes`, `comments`, `views`, `captured_at`), `comments_stored`.
+Each post: `id`, `outlet`, `platform`, `handle`, `external_id`, `url`, `title`, `caption`, `media_type`, `thumbnail_url`, `published_at`, `first_seen_at`, `updated_at`, `metrics` (`likes`, `comments`, `views`, `captured_at`), `comments_stored`.
+
+`thumbnail_url` is the post's image: the YouTube video thumbnail, or the Instagram photo or video cover. It is `null` until the collector has refreshed the post. Instagram image links expire after a few days, so download the image when you receive the post and serve your own copy; do not store the link itself. Only links on `cdninstagram.com`, `fbcdn.net` and `ytimg.com` are ever sent.
 
 ### `GET /comments`
 
