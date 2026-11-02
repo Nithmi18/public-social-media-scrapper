@@ -8,6 +8,7 @@ It reads the public Instagram and YouTube pages of news outlets (currently Newsw
 | Piece | What it does |
 | --- | --- |
 | `supabase/functions/collect-channel` | Collects one channel: Instagram via Graph API Business Discovery, YouTube via Data API v3. Upserts posts and today's metrics. |
+| `supabase/functions/backfill-instagram` | Pages back through an Instagram account's older posts and stores the ones inside a date window (see below). |
 | `supabase/functions/collect-youtube-comments` | Pages through comment threads and replies for one YouTube video, resumable across runs. |
 | `supabase/functions/comment-capture` | Backend for the comment capture extension: the dashboard queue and saving captured Instagram comments. |
 | `extension/comment-capture` | Chrome extension for reading Instagram comments by hand (see below). |
@@ -31,9 +32,26 @@ npx supabase functions deploy collect-channel --no-verify-jwt
 npx supabase functions deploy collect-youtube-comments --no-verify-jwt
 npx supabase functions deploy news-feed --no-verify-jwt
 npx supabase functions deploy comment-capture --no-verify-jwt
+npx supabase functions deploy backfill-instagram --no-verify-jwt
 ```
 
 The functions check their own secret header, so JWT verification is off.
+
+## Instagram history backfill
+
+The collector only refreshes the last 7 days. To fetch older Instagram posts, add a job per channel and let the `instagram-backfill` cron job (in `supabase/snapshot/cron_jobs.sql`) run it:
+
+```sql
+insert into public.instagram_backfills(channel_id,window_start,window_end)
+select id,'2024-12-01 00:00+05:30','2025-04-01 00:00+05:30' from public.channels
+where platform='instagram' and handle in ('dailymirrorlk','newswirelk');
+```
+
+Each call reads up to 6 pages of 50 posts from a saved cursor and stores only posts published inside the window, so a job pages through every newer post first (roughly 60 posts a day per outlet). It pauses for an hour when Meta reports a rate limit or usage above 75%, and stops as `failed` after 8 errors in a row (reset with `update public.instagram_backfills set status='pending',failures=0 where ...`). A job ends as `done` with note `reached_window_start`, or `instagram_returned_no_more_pages` if Business Discovery stops paging before the window.
+
+- Likes, comments and views of backfilled posts are the values on the day they were fetched, not the values at the time.
+- Backfilled posts have `posts.backfilled_at` set and are not served by the news feed.
+- `docs/budget_engagement_comparison.sql` compares the two outlets' engagement over the window.
 
 ## Instagram comment capture
 
