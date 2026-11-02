@@ -100,13 +100,15 @@ export async function metaGet(url,fetcher=fetch) {
   return {body,use};
 }
 
-const PAGE_SIZE=50, MAX_PAGES_PER_CALL=6, TIME_BUDGET_MS=60000, USAGE_PAUSE_PCT=75;
-function discoveryUrl(handle,{after=null,until=null,images=true}={}) {
+// Meta's usage meter counts requests, so bigger pages cover more posts per request.
+// Instagram may refuse 100; the call then drops to 50 for the rest of the call.
+const PAGE_SIZE=100, FALLBACK_PAGE_SIZE=50, MAX_PAGES_PER_CALL=6, TIME_BUDGET_MS=60000, USAGE_PAUSE_PCT=75;
+function discoveryUrl(handle,{after=null,until=null,images=true,size=PAGE_SIZE}={}) {
   const version=required('META_GRAPH_VERSION');
   if(!/^v\d+\.\d+$/.test(version)) throw new SafeError('invalid_meta_graph_version');
   const caller=required('META_CALLER_IG_ID');
   if(!/^\d+$/.test(caller)) throw new SafeError('invalid_meta_caller_id');
-  const mods=`${until?`.until(${until})`:''}.limit(${PAGE_SIZE})${after?`.after(${after})`:''}`;
+  const mods=`${until?`.until(${until})`:''}.limit(${size})${after?`.after(${after})`:''}`;
   const fields=`business_discovery.username(${handle}){id,media${mods}{id,caption,media_type,permalink,timestamp,like_count,comments_count,view_count${images?',media_url,thumbnail_url':''}}}`;
   const url=new URL(`https://graph.facebook.com/${version}/${caller}`);url.searchParams.set('fields',fields);
   return url;
@@ -117,15 +119,16 @@ export async function runBackfill(channel,job,fetcher=fetch,save=rpc) {
   if(!/^[A-Za-z0-9_.]+$/.test(channel.handle)) throw new SafeError('invalid_instagram_handle');
   const start=Date.parse(job.window_start), end=Date.parse(job.window_end);
   const started=Date.now();
-  let cursor=job.cursor, pages=0, stored=0, images=true, done=false, pause=0, note=null;
+  let cursor=job.cursor, pages=0, stored=0, images=true, size=PAGE_SIZE, done=false, pause=0, note=null;
   // Ask Instagram to list posts from the window's end backwards. If it refuses until(),
   // the job pages back from the newest post instead; if it ignores it, nothing is lost.
   let useUntil=!String(job.note||'').includes('until_not_supported');
   while(pages<MAX_PAGES_PER_CALL && Date.now()-started<TIME_BUDGET_MS) {
     let result;
-    try { result=await metaGet(discoveryUrl(channel.handle,{after:cursor,until:useUntil?Math.floor(end/1000):null,images}),fetcher); }
+    try { result=await metaGet(discoveryUrl(channel.handle,{after:cursor,until:useUntil?Math.floor(end/1000):null,images,size}),fetcher); }
     catch(error) {
       const plain400=error instanceof MetaError && error.status===400 && !error.pauseSeconds;
+      if(plain400 && size>FALLBACK_PAGE_SIZE) { size=FALLBACK_PAGE_SIZE; continue; }
       if(plain400 && useUntil) { useUntil=false; note='until_not_supported'; continue; }
       if(plain400 && images) { images=false; continue; }
       throw error;
