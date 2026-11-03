@@ -33,14 +33,15 @@ select cron.schedule('social-collector', '0,30 * * * *', $cron$
  end $dispatch$;
 $cron$);
 
--- Pushes each collection to the newsroom app, 10 minutes after each collector run (the feed
--- holds rows back for 5 minutes after they change). It calls the app's /api/sync-social
--- route, which pulls what changed from the news feed. Does nothing until both Vault secrets
--- exist:
+-- Pushes each collection to the newsroom app. It calls the app's /api/sync-social route,
+-- which pulls what changed from the news feed, at :10, :15, :20 and :25 after each collector
+-- run (the feed holds rows back for 5 minutes after they change). Each call copies at most
+-- 500 posts and a run changes ~750 (~1,700 for a full run), so four calls catch up; calls
+-- with nothing new return straight away. Does nothing until both Vault secrets exist:
 --   select vault.create_secret('https://<newsroom app domain>/api/sync-social', 'newsroom_sync_url');
 --   select vault.create_secret('<the app''s CRON_SECRET>', 'newsroom_sync_token');
 -- To connect another app the same way, copy this job with its own job name and secrets.
-select cron.schedule('newsroom-sync', '10,40 * * * *', $cron$
+select cron.schedule('newsroom-sync', '10-25/5,40-55/5 * * * *', $cron$
  do $push$
  declare sync_url text; sync_token text;
  begin
