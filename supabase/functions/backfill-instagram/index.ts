@@ -114,8 +114,8 @@ function discoveryUrl(handle,{after=null,until=null,images=true,size=PAGE_SIZE}=
   return url;
 }
 
-// Runs up to MAX_PAGES_PER_CALL pages for one channel's job. Returns a summary.
-export async function runBackfill(channel,job,fetcher=fetch,save=rpc) {
+// Runs up to maxPages pages (at most MAX_PAGES_PER_CALL) for one channel's job. Returns a summary.
+export async function runBackfill(channel,job,fetcher=fetch,save=rpc,maxPages=MAX_PAGES_PER_CALL) {
   if(!/^[A-Za-z0-9_.]+$/.test(channel.handle)) throw new SafeError('invalid_instagram_handle');
   const start=Date.parse(job.window_start), end=Date.parse(job.window_end);
   const started=Date.now();
@@ -123,7 +123,7 @@ export async function runBackfill(channel,job,fetcher=fetch,save=rpc) {
   // Ask Instagram to list posts from the window's end backwards. If it refuses until(),
   // the job pages back from the newest post instead; if it ignores it, nothing is lost.
   let useUntil=!String(job.note||'').includes('until_not_supported');
-  while(pages<MAX_PAGES_PER_CALL && Date.now()-started<TIME_BUDGET_MS) {
+  while(pages<maxPages && Date.now()-started<TIME_BUDGET_MS) {
     let result;
     try { result=await metaGet(discoveryUrl(channel.handle,{after:cursor,until:useUntil?Math.floor(end/1000):null,images,size}),fetcher); }
     catch(error) {
@@ -164,12 +164,15 @@ export async function handler(req) {
     const text=await req.text(); if(text.length>2048) return json({error:'body_too_large'},413);
     let body; try {body=JSON.parse(text);} catch {return json({error:'invalid_json'},400);}
     if(!/^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(body?.channel_id)) return json({error:'invalid_channel_id'},400);
+    // Optional pace limit from the caller: e.g. max_pages 1 on an hourly schedule = 100 posts an hour.
+    const maxPages=body.max_pages===undefined?MAX_PAGES_PER_CALL:Number(body.max_pages);
+    if(!Number.isInteger(maxPages) || maxPages<1 || maxPages>MAX_PAGES_PER_CALL) return json({error:'invalid_max_pages'},400);
     const channel=(await db(`channels?id=eq.${body.channel_id}&select=id,handle,platform,enabled`))[0];
     if(!channel || channel.platform!=='instagram') return json({error:'channel_missing'},404);
     const job=await rpc('claim_backfill',{p_channel:channel.id});
     if(!job) return json({status:'idle'});
     claimed=channel.id;
-    const r=await runBackfill(channel,job);
+    const r=await runBackfill(channel,job,fetch,rpc,maxPages);
     await rpc('release_backfill',{p_channel:channel.id,p_error:null,p_pause_seconds:r.pause||null});
     return json({status:r.done?'done':'running',pages:r.pages,posts_stored:r.stored,paused_seconds:r.pause});
   } catch(error) {
