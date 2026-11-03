@@ -52,12 +52,12 @@ $cron$);
 
 select cron.schedule('youtube-comment-retention', '15 0 * * *', $cron$select public.prune_youtube_comments();$cron$);
 
--- Instagram history backfill (supabase/functions/backfill-instagram). Once an hour it
+-- Instagram history backfill (supabase/functions/backfill-instagram). Every 15 minutes it
 -- calls the function once per unfinished job with max_pages 1, i.e. one page of 100
--- posts per outlet per hour. Raise max_pages (up to 6) or run it more often to go faster.
+-- posts per outlet per run (400 an hour). Raise max_pages (up to 6) or run it more often to go faster.
 -- It does nothing once every job is done. Remove it then with:
 --   select cron.unschedule('instagram-backfill');
-select cron.schedule('instagram-backfill', '5 * * * *', $cron$
+select cron.schedule('instagram-backfill', '*/15 * * * *', $cron$
  do $dispatch$
  declare collector_secret text; job_row record;
  begin
