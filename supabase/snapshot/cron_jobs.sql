@@ -1,4 +1,4 @@
--- Scheduled jobs as they exist on the live project (captured 2026-10-28).
+-- Scheduled jobs as they exist on the live project (updated 2026-11-03).
 -- Not a migration: cron jobs embed the project URL. cron.schedule() upserts by
 -- job name, so this file can be re-run safely after editing.
 --
@@ -8,21 +8,52 @@
 --
 -- Times are UTC. 00:30 and 12:30 UTC = 06:00 and 18:00 in Sri Lanka.
 
-select cron.schedule('social-collector-twice-daily', '30 0,12 * * *', $cron$
+-- Collector, every 30 minutes. At 00:30 and 12:30 UTC (06:00 and 18:00 in Sri Lanka) it
+-- refreshes the full window (Instagram 7 days, YouTube 14 days). The other runs refresh
+-- Instagram posts from the last 2 days only, to stay well inside Meta's rate limits (about
+-- 4 Business Discovery requests per run instead of 10-12). YouTube always refreshes 14 days,
+-- which costs up to about 11 quota units per channel per run (~800 of the 10,000 a day).
+select cron.unschedule('social-collector-twice-daily') where exists(select 1 from cron.job where jobname='social-collector-twice-daily');
+select cron.schedule('social-collector', '0,30 * * * *', $cron$
  do $dispatch$
- declare collector_secret text; channel_row record;
+ declare collector_secret text; channel_row record; full_run boolean;
  begin
   select decrypted_secret into strict collector_secret from vault.decrypted_secrets where name='scraper_collector_secret';
   if collector_secret is null or length(collector_secret)<32 then raise exception 'scraper_collector_secret is missing or invalid'; end if;
-  for channel_row in select id from public.channels where enabled and platform in ('instagram','youtube') loop
+  full_run:=extract(hour from now() at time zone 'UTC') in (0,12) and extract(minute from now() at time zone 'UTC')>=30;
+  for channel_row in select id,platform from public.channels where enabled and platform in ('instagram','youtube') loop
    perform net.http_post(
     url:='https://qyeaiqpvqecyapovcwox.supabase.co/functions/v1/collect-channel',
     headers:=jsonb_build_object('Content-Type','application/json','x-collector-secret',collector_secret),
-    body:=jsonb_build_object('channel_id',channel_row.id),
+    body:=jsonb_build_object('channel_id',channel_row.id)
+     ||case when channel_row.platform='instagram' and not full_run then jsonb_build_object('refresh_days',2) else '{}'::jsonb end,
     timeout_milliseconds:=180000
    );
   end loop;
  end $dispatch$;
+$cron$);
+
+-- Pushes each collection to the newsroom app, 10 minutes after each collector run (the feed
+-- holds rows back for 5 minutes after they change). It calls the app's /api/sync-social
+-- route, which pulls what changed from the news feed. Does nothing until both Vault secrets
+-- exist:
+--   select vault.create_secret('https://<newsroom app domain>/api/sync-social', 'newsroom_sync_url');
+--   select vault.create_secret('<the app''s CRON_SECRET>', 'newsroom_sync_token');
+-- To connect another app the same way, copy this job with its own job name and secrets.
+select cron.schedule('newsroom-sync', '10,40 * * * *', $cron$
+ do $push$
+ declare sync_url text; sync_token text;
+ begin
+  select decrypted_secret into sync_url from vault.decrypted_secrets where name='newsroom_sync_url';
+  select decrypted_secret into sync_token from vault.decrypted_secrets where name='newsroom_sync_token';
+  if sync_url is null or sync_token is null then return; end if;
+  if sync_url !~ '^https://[^/@[:space:]]+/' then raise exception 'newsroom_sync_url must be an https URL'; end if;
+  perform net.http_get(
+   url:=sync_url,
+   headers:=jsonb_build_object('Authorization','Bearer '||sync_token),
+   timeout_milliseconds:=60000
+  );
+ end $push$;
 $cron$);
 
 select cron.schedule('social-api-retention', '10 0 * * *', $cron$select public.prune_api_data();$cron$);
@@ -52,23 +83,8 @@ $cron$);
 
 select cron.schedule('youtube-comment-retention', '15 0 * * *', $cron$select public.prune_youtube_comments();$cron$);
 
--- Instagram history backfill (supabase/functions/backfill-instagram). Every 2 minutes it
--- calls the function once per unfinished job; each call reads up to 6 pages of 50 posts.
--- It does nothing once every job is done. Remove it then with:
---   select cron.unschedule('instagram-backfill');
-select cron.schedule('instagram-backfill', '*/2 * * * *', $cron$
- do $dispatch$
- declare collector_secret text; job_row record;
- begin
-  select decrypted_secret into strict collector_secret from vault.decrypted_secrets where name='scraper_collector_secret';
-  if collector_secret is null or length(collector_secret)<32 then raise exception 'scraper_collector_secret is missing or invalid'; end if;
-  for job_row in select channel_id from public.instagram_backfills
-   where status in ('pending','running') and (next_attempt_at is null or next_attempt_at<=now()) loop
-   perform net.http_post(
-    url:='https://qyeaiqpvqecyapovcwox.supabase.co/functions/v1/backfill-instagram',
-    headers:=jsonb_build_object('Content-Type','application/json','x-collector-secret',collector_secret),
-    body:=jsonb_build_object('channel_id',job_row.channel_id),timeout_milliseconds:=120000
-   );
-  end loop;
- end $dispatch$;
-$cron$);
+-- Instagram history backfill (supabase/functions/backfill-instagram). Both jobs from
+-- November 2026 are done, so the job is off. To run a new backfill, schedule it again with
+-- the definition in git history (commit 72534b5), every 2 minutes, then unschedule it once
+-- every job in public.instagram_backfills is done.
+select cron.unschedule('instagram-backfill') where exists(select 1 from cron.job where jobname='instagram-backfill');

@@ -90,28 +90,35 @@ export function normalizeYT(p) {
     thumbnail_url:imageUrl(pickThumbnail(p.snippet.thumbnails),YT_IMAGE_HOSTS)};
 }
 // News outlets post ~60 times a day on Instagram, so the refresh window is set in
-// days and the page cap only guards against runaway paging (50 posts a page).
-const IG_REFRESH_DAYS=7, IG_MAX_PAGES=12;
+// days and the page cap only guards against runaway paging. Meta's usage meter counts
+// requests, so pages of 100 cover the window in half the calls; if Instagram refuses 100
+// the run drops to 50.
+// The every-30-minutes runs pass refresh_days (e.g. 2) to refresh only recent posts; the
+// twice-daily full runs leave it out and refresh the whole week.
+// IG_MAX_POSTS stays within finish_collection's 1000-post payload limit.
+export const IG_REFRESH_DAYS=7, IG_MAX_POSTS=1000, IG_MAX_PAGES=20, IG_PAGE_SIZE=100, IG_FALLBACK_PAGE_SIZE=50;
 // Daily Mirror uploads ~15 videos a day, so 14 days needs more than 4 pages of 50.
 const YT_MAX_PAGES=8, YT_MAX_RECENT=400;
-export async function instagram(channel,fetcher=fetch) {
+export async function instagram(channel,fetcher=fetch,refreshDays=IG_REFRESH_DAYS) {
   if(!/^[A-Za-z0-9_.]+$/.test(channel.handle)) throw new SafeError('invalid_instagram_handle');
   const version=required('META_GRAPH_VERSION');
   if(!/^v\d+\.\d+$/.test(version)) throw new SafeError('invalid_meta_graph_version');
   const caller=required('META_CALLER_IG_ID');
   if(!/^\d+$/.test(caller)) throw new SafeError('invalid_meta_caller_id');
-  const posts=new Map(); let after=null, info, truncated=false, imageFields=',media_url,thumbnail_url';
+  const posts=new Map(); let after=null, info, truncated=false, imageFields=',media_url,thumbnail_url', size=IG_PAGE_SIZE;
   const warnings=[];
-  const cutoff=Date.now()-IG_REFRESH_DAYS*86400000;
+  const cutoff=Date.now()-refreshDays*86400000;
   for(let page=0;page<IG_MAX_PAGES;page++) {
     const paging=after?`.after(${after})`:'';
-    const fields=`business_discovery.username(${channel.handle}){id,username,name,biography,followers_count,media_count,media.limit(50)${paging}{id,caption,media_type,permalink,timestamp,like_count,comments_count,view_count${imageFields}}}`;
+    const fields=`business_discovery.username(${channel.handle}){id,username,name,biography,followers_count,media_count,media.limit(${size})${paging}{id,caption,media_type,permalink,timestamp,like_count,comments_count,view_count${imageFields}}}`;
     const url=new URL(`https://graph.facebook.com/${version}/${caller}`);url.searchParams.set('fields',fields);
     let result;
     try { result=await requestJson(url,{headers:{Authorization:`Bearer ${required('META_ACCESS_TOKEN')}`}},fetcher); }
     catch(error) {
-      // If Instagram refuses the image fields, collect the counts without thumbnails.
-      if(page!==0 || !imageFields || error.message!=='upstream_http_400') throw error;
+      // If Instagram refuses the first request, try smaller pages, then counts without thumbnails.
+      if(page!==0 || error.message!=='upstream_http_400') throw error;
+      if(size>IG_FALLBACK_PAGE_SIZE) { size=IG_FALLBACK_PAGE_SIZE; page--; continue; }
+      if(!imageFields) throw error;
       imageFields=''; warnings.push('instagram_thumbnails_unavailable'); page--; continue;
     }
     info=result.business_discovery;
@@ -122,10 +129,12 @@ export async function instagram(channel,fetcher=fetch) {
     // Never follow provider next URLs: reconstruct on the trusted API host.
     const hasNext=Boolean(rows.length && next);
     if(!hasNext) break;
-    if(rows.length && rows.every(p=>Date.parse(p.timestamp)<cutoff)) break;
+    // Newest first, apart from pinned posts at the top, so the page's last post shows
+    // whether the window is covered.
+    if(Date.parse(rows[rows.length-1].timestamp)<cutoff) break;
     if(!/^[A-Za-z0-9_=-]+$/.test(next)) throw new SafeError('invalid_instagram_cursor');
     after=next;
-    if(page===IG_MAX_PAGES-1) truncated=true;
+    if(page===IG_MAX_PAGES-1 || posts.size+size>IG_MAX_POSTS) { truncated=true; break; }
   }
   return {posts:[...posts.values()],external_id:String(info.id),
     metadata:{username:info.username,name:info.name,biography:info.biography},
@@ -174,13 +183,16 @@ export async function handler(req) {
     const text=await req.text(); if(text.length>2048) return json({error:'body_too_large'},413);
     let body; try {body=JSON.parse(text);} catch {return json({error:'invalid_json'},400);}
     if(!/^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(body?.channel_id)) return json({error:'invalid_channel_id'},400);
+    // Optional, Instagram only: refresh posts from the last N days instead of the full week.
+    const refreshDays=body.refresh_days??IG_REFRESH_DAYS;
+    if(!Number.isInteger(refreshDays) || refreshDays<1 || refreshDays>IG_REFRESH_DAYS) return json({error:'invalid_refresh_days'},400);
     const channels=await db(`channels?id=eq.${body.channel_id}&select=*`);
     const channel=channels[0];
     if(!channel?.enabled) return json({error:'channel_disabled_or_missing'},404);
     run=await rpc('claim_collection',{p_channel:channel.id});
     if(!run) return json({error:'collection_already_running'},409);
     let payload;
-    if(channel.platform==='instagram') payload=await instagram(channel);
+    if(channel.platform==='instagram') payload=await instagram(channel,fetch,refreshDays);
     else if(channel.platform==='youtube') {
       const since=new Date(Date.now()-14*86400000).toISOString();
       const recent=await db(`posts?channel_id=eq.${channel.id}&published_at=gte.${encodeURIComponent(since)}&select=external_id&order=published_at.desc&limit=${YT_MAX_RECENT+1}`);

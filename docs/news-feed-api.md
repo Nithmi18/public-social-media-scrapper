@@ -54,7 +54,7 @@ Tracked channels with their latest `metrics` (`followers`, `post_count`, `views`
 2. Upsert every row by `id`. Delivery is at least once, so the same row can arrive twice.
 3. Store the last `next_cursor` and start from it next time.
 
-The collector runs at 06:00 and 18:00 Sri Lanka time (00:30 and 12:30 UTC), so syncing about 30 minutes after each run is enough. Rows appear about 5 minutes after they are collected.
+The collector runs every 30 minutes, on the hour and half hour. Rows appear about 5 minutes after they are collected, so sync at :10 and :40. The collector can also call your sync route itself after each run (a GET with `Authorization: Bearer <secret>`); ask its operator to set that up.
 
 ## Data rules
 
