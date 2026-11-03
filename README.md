@@ -1,7 +1,7 @@
 # public-social-media-scrapper
 A tool for collecting and organizing publicly available social media data for analytics, and monitoring.
 
-It reads the public Instagram and YouTube pages of news outlets (currently Newswire and Daily Mirror, Sri Lanka) twice a day through the official APIs and stores posts, engagement and YouTube comments in Supabase.
+It reads the public Instagram and YouTube pages of news outlets (currently Newswire and Daily Mirror, Sri Lanka) every 30 minutes through the official APIs and stores posts, engagement and YouTube comments in Supabase.
 
 ## How it works
 
@@ -14,11 +14,21 @@ It reads the public Instagram and YouTube pages of news outlets (currently Newsw
 | `extension/comment-capture` | Chrome extension for reading Instagram comments by hand (see below). |
 | `supabase/functions/news-feed` | Read API for connected apps: posts with counts, comments and channels, keyed by an `x-consumer-key`. See [docs/news-feed-api.md](docs/news-feed-api.md). |
 | `supabase/migrations` | Database schema. `20261027000000_baseline_core_schema.sql` captures tables first made in the SQL editor. |
-| `supabase/snapshot/cron_jobs.sql` | The pg_cron jobs: collector at 00:30 and 12:30 UTC, comments at :45, retention daily. |
+| `supabase/snapshot/cron_jobs.sql` | The pg_cron jobs: collector every 30 minutes, newsroom push 10 minutes after each run, YouTube comments at 00:45 and 12:45 UTC, retention daily. |
 
 All tables have RLS on with no policies, and the database functions are executable only by `service_role`, so nothing is readable with the public anon key.
 
 YouTube data from channels that have not authorised us is pruned after 29 days, as YouTube's API policies require.
+
+## Schedule
+
+The collector runs every 30 minutes, on the hour and half hour (UTC):
+
+- **00:30 and 12:30** (06:00 and 18:00 in Sri Lanka): full refresh. Instagram posts from the last 7 days and YouTube videos from the last 14 days.
+- **Every other run:** new posts plus Instagram posts from the last 2 days (`refresh_days: 2`), and YouTube's full 14 days. Older Instagram posts change slowly, and this keeps each run to about 4 Business Discovery requests, well inside Meta's rate limits.
+- **:10 and :40:** the `newsroom-sync` job calls the newsroom app's `/api/sync-social` route, so it picks up each run's new posts and counts. It needs two Vault secrets, `newsroom_sync_url` and `newsroom_sync_token` (the app's `CRON_SECRET`); see `supabase/snapshot/cron_jobs.sql`.
+
+`post_metrics_daily` keeps one row per post per day, so each run overwrites that day's counts and the history holds the day's last reading.
 
 ## Deploying
 
