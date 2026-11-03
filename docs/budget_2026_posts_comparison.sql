@@ -4,6 +4,8 @@
 -- least one politics word: government, parliament, minister, MP, president, cabinet,
 -- opposition, debate, reading, vote, finance, treasury or appropriation. Every word is
 -- matched in English, Sinhala or Tamil, and the languages can be mixed in one caption.
+-- The budget word must also be in the headline (first 250 characters), so long articles that
+-- only mention the budget in passing are left out, and local council budgets are left out.
 -- Likes and comments are the counts on the day the post was collected, not in 2025.
 -- Posts come from the Nov-Dec 2025 backfill.
 
@@ -26,6 +28,10 @@ with budget_posts as (
     -- Each line accepts English, Sinhala or Tamil.
     and p.caption ~* '(\mbudget\M(?![- ]?friendly)|අයවැය|வரவு\s*செலவு|பாதீடு|பட்ஜெட்)'   -- budget
     and p.caption ~ '(2026|௨௦௨௬)'                                                  -- 2026
+    -- Budget must be the topic: the budget word appears in the headline / first 250 characters.
+    and left(p.caption, 250) ~* '(\mbudget\M(?![- ]?friendly)|අයවැය|வரவு\s*செலவு|பாதீடு|பட்ஜெட்)'
+    -- Leave out local council budgets (Municipal, Urban, Pradeshiya, Provincial councils).
+    and p.caption !~* '(municipal|urban council|pradeshiya|provincial council|\mMC\M|නගර සභා|ප්‍රාදේශීය සභා|மாநகர சபை|பிரதேச சபை)'
     and p.caption ~* '(\mgov(ernment|t)\M|parliament|\mministers?\M|\mministry\M|\mMPs?\M|president|cabinet|opposition|\mdebate|\mreading\M|\mvot(e|ed|es|ing)\M|finance|treasury|appropriation|රජය|ආණ්ඩු|පාර්ලිමේන්තු|ඇමති|ජනාධිපති|அரசாங்க|அரசு|நாடாளுமன்ற|பாராளுமன்ற|அமைச்சர்|ஜனாதிபதி)' -- politics word
 )
 select * from budget_posts
@@ -46,6 +52,10 @@ with budget_posts as (
     -- Each line accepts English, Sinhala or Tamil.
     and p.caption ~* '(\mbudget\M(?![- ]?friendly)|අයවැය|வரவு\s*செலவு|பாதீடு|பட்ஜெட்)'   -- budget
     and p.caption ~ '(2026|௨௦௨௬)'                                                  -- 2026
+    -- Budget must be the topic: the budget word appears in the headline / first 250 characters.
+    and left(p.caption, 250) ~* '(\mbudget\M(?![- ]?friendly)|අයවැය|வரவு\s*செலவு|பாதீடு|பட்ஜெட்)'
+    -- Leave out local council budgets (Municipal, Urban, Pradeshiya, Provincial councils).
+    and p.caption !~* '(municipal|urban council|pradeshiya|provincial council|\mMC\M|නගර සභා|ප්‍රාදේශීය සභා|மாநகர சபை|பிரதேச சபை)'
     and p.caption ~* '(\mgov(ernment|t)\M|parliament|\mministers?\M|\mministry\M|\mMPs?\M|president|cabinet|opposition|\mdebate|\mreading\M|\mvot(e|ed|es|ing)\M|finance|treasury|appropriation|රජය|ආණ්ඩු|පාර්ලිමේන්තු|ඇමති|ජනාධිපති|அரசாங்க|அரசு|நாடாளுமன்ற|பாராளுமன்ற|அமைச்சர்|ஜனாதிபதி)' -- politics word
 )
 select outlet,
