@@ -52,11 +52,12 @@ $cron$);
 
 select cron.schedule('youtube-comment-retention', '15 0 * * *', $cron$select public.prune_youtube_comments();$cron$);
 
--- Instagram history backfill (supabase/functions/backfill-instagram). Every 2 minutes it
--- calls the function once per unfinished job; each call reads up to 6 pages of 50 posts.
+-- Instagram history backfill (supabase/functions/backfill-instagram). Every 15 minutes it
+-- calls the function once per unfinished job with max_pages 1, i.e. one page of 100
+-- posts per outlet per run (400 an hour). Raise max_pages (up to 6) or run it more often to go faster.
 -- It does nothing once every job is done. Remove it then with:
 --   select cron.unschedule('instagram-backfill');
-select cron.schedule('instagram-backfill', '*/2 * * * *', $cron$
+select cron.schedule('instagram-backfill', '*/15 * * * *', $cron$
  do $dispatch$
  declare collector_secret text; job_row record;
  begin
@@ -67,7 +68,7 @@ select cron.schedule('instagram-backfill', '*/2 * * * *', $cron$
    perform net.http_post(
     url:='https://qyeaiqpvqecyapovcwox.supabase.co/functions/v1/backfill-instagram',
     headers:=jsonb_build_object('Content-Type','application/json','x-collector-secret',collector_secret),
-    body:=jsonb_build_object('channel_id',job_row.channel_id),timeout_milliseconds:=120000
+    body:=jsonb_build_object('channel_id',job_row.channel_id,'max_pages',1),timeout_milliseconds:=120000
    );
   end loop;
  end $dispatch$;
